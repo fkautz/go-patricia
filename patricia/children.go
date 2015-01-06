@@ -11,38 +11,38 @@ var MaxPrefixPerNode = 10
 // Max children to keep in a node in the sparse mode.
 const MaxChildrenPerSparseNode = 8
 
-type childList interface {
+type ChildList interface {
 	length() int
 	head() *Trie
-	add(child *Trie) childList
+	add(child *Trie) ChildList
 	replace(b byte, child *Trie)
 	remove(child *Trie)
 	next(b byte) *Trie
 	walk(prefix *Prefix, visitor VisitorFunc) error
 }
 
-type sparseChildList struct {
-	children []*Trie
+type SparseChildList struct {
+	Children []*Trie
 }
 
-func newSparseChildList() childList {
-	return &sparseChildList{
-		children: make([]*Trie, 0, MaxChildrenPerSparseNode),
+func newSparseChildList() ChildList {
+	return &SparseChildList{
+		Children: make([]*Trie, 0, MaxChildrenPerSparseNode),
 	}
 }
 
-func (list *sparseChildList) length() int {
-	return len(list.children)
+func (list *SparseChildList) length() int {
+	return len(list.Children)
 }
 
-func (list *sparseChildList) head() *Trie {
-	return list.children[0]
+func (list *SparseChildList) head() *Trie {
+	return list.Children[0]
 }
 
-func (list *sparseChildList) add(child *Trie) childList {
+func (list *SparseChildList) add(child *Trie) ChildList {
 	// Search for an empty spot and insert the child if possible.
-	if len(list.children) != cap(list.children) {
-		list.children = append(list.children, child)
+	if len(list.Children) != cap(list.Children) {
+		list.Children = append(list.Children, child)
 		return list
 	}
 
@@ -50,20 +50,20 @@ func (list *sparseChildList) add(child *Trie) childList {
 	return newDenseChildList(list, child)
 }
 
-func (list *sparseChildList) replace(b byte, child *Trie) {
+func (list *SparseChildList) replace(b byte, child *Trie) {
 	// Seek the child and replace it.
-	for i, node := range list.children {
-		if node.prefix[0] == b {
-			list.children[i] = child
+	for i, node := range list.Children {
+		if node.InternalPrefix[0] == b {
+			list.Children[i] = child
 			return
 		}
 	}
 }
 
-func (list *sparseChildList) remove(child *Trie) {
-	for i, node := range list.children {
-		if node.prefix[0] == child.prefix[0] {
-			list.children = append(list.children[:i], list.children[i+1:]...)
+func (list *SparseChildList) remove(child *Trie) {
+	for i, node := range list.Children {
+		if node.InternalPrefix[0] == child.InternalPrefix[0] {
+			list.Children = append(list.Children[:i], list.Children[i+1:]...)
 			return
 		}
 	}
@@ -72,32 +72,32 @@ func (list *sparseChildList) remove(child *Trie) {
 	panic("removing non-existent child")
 }
 
-func (list *sparseChildList) next(b byte) *Trie {
-	for _, child := range list.children {
-		if child.prefix[0] == b {
+func (list *SparseChildList) next(b byte) *Trie {
+	for _, child := range list.Children {
+		if child.InternalPrefix[0] == b {
 			return child
 		}
 	}
 	return nil
 }
 
-func (list *sparseChildList) walk(prefix *Prefix, visitor VisitorFunc) error {
-	for _, child := range list.children {
-		*prefix = append(*prefix, child.prefix...)
-		if child.item != nil {
-			err := visitor(*prefix, child.item)
+func (list *SparseChildList) walk(prefix *Prefix, visitor VisitorFunc) error {
+	for _, child := range list.Children {
+		*prefix = append(*prefix, child.InternalPrefix...)
+		if child.InternalItem != nil {
+			err := visitor(*prefix, child.InternalItem)
 			if err != nil {
 				if err == SkipSubtree {
-					*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+					*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 					continue
 				}
-				*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+				*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 				return err
 			}
 		}
 
-		err := child.children.walk(prefix, visitor)
-		*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+		err := child.InternalChildren.walk(prefix, visitor)
+		*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 		if err != nil {
 			return err
 		}
@@ -106,19 +106,19 @@ func (list *sparseChildList) walk(prefix *Prefix, visitor VisitorFunc) error {
 	return nil
 }
 
-type denseChildList struct {
-	min      int
-	max      int
-	children []*Trie
+type DenseChildList struct {
+	Min      int
+	Max      int
+	Children []*Trie
 }
 
-func newDenseChildList(list *sparseChildList, child *Trie) childList {
+func newDenseChildList(list *SparseChildList, child *Trie) ChildList {
 	var (
 		min int = 255
 		max int = 0
 	)
-	for _, child := range list.children {
-		b := int(child.prefix[0])
+	for _, child := range list.Children {
+		b := int(child.InternalPrefix[0])
 		if b < min {
 			min = b
 		}
@@ -127,7 +127,7 @@ func newDenseChildList(list *sparseChildList, child *Trie) childList {
 		}
 	}
 
-	b := int(child.prefix[0])
+	b := int(child.InternalPrefix[0])
 	if b < min {
 		min = b
 	}
@@ -136,91 +136,91 @@ func newDenseChildList(list *sparseChildList, child *Trie) childList {
 	}
 
 	children := make([]*Trie, max-min+1)
-	for _, child := range list.children {
-		children[int(child.prefix[0])-min] = child
+	for _, child := range list.Children {
+		children[int(child.InternalPrefix[0])-min] = child
 	}
-	children[int(child.prefix[0])-min] = child
+	children[int(child.InternalPrefix[0])-min] = child
 
-	return &denseChildList{min, max, children}
+	return &DenseChildList{min, max, children}
 }
 
-func (list *denseChildList) length() int {
-	return list.max - list.min + 1
+func (list *DenseChildList) length() int {
+	return list.Max - list.Min + 1
 }
 
-func (list *denseChildList) head() *Trie {
-	return list.children[0]
+func (list *DenseChildList) head() *Trie {
+	return list.Children[0]
 }
 
-func (list *denseChildList) add(child *Trie) childList {
-	b := int(child.prefix[0])
+func (list *DenseChildList) add(child *Trie) ChildList {
+	b := int(child.InternalPrefix[0])
 
 	switch {
-	case list.min <= b && b <= list.max:
-		if list.children[b-list.min] != nil {
+	case list.Min <= b && b <= list.Max:
+		if list.Children[b-list.Min] != nil {
 			panic("dense child list collision detected")
 		}
-		list.children[b-list.min] = child
+		list.Children[b-list.Min] = child
 
-	case b < list.min:
-		children := make([]*Trie, list.max-b+1)
+	case b < list.Min:
+		children := make([]*Trie, list.Max-b+1)
 		children[0] = child
-		copy(children[list.min-b:], list.children)
-		list.children = children
-		list.min = b
+		copy(children[list.Min-b:], list.Children)
+		list.Children = children
+		list.Min = b
 
 	default: // b > list.max
-		children := make([]*Trie, b-list.min+1)
-		children[b-list.min] = child
-		copy(children, list.children)
-		list.children = children
-		list.max = b
+		children := make([]*Trie, b-list.Min+1)
+		children[b-list.Min] = child
+		copy(children, list.Children)
+		list.Children = children
+		list.Max = b
 	}
 
 	return list
 }
 
-func (list *denseChildList) replace(b byte, child *Trie) {
-	list.children[int(b)-list.min] = nil
-	list.children[int(child.prefix[0])-list.min] = child
+func (list *DenseChildList) replace(b byte, child *Trie) {
+	list.Children[int(b)-list.Min] = nil
+	list.Children[int(child.InternalPrefix[0])-list.Min] = child
 }
 
-func (list *denseChildList) remove(child *Trie) {
-	i := int(child.prefix[0]) - list.min
-	if list.children[i] == nil {
+func (list *DenseChildList) remove(child *Trie) {
+	i := int(child.InternalPrefix[0]) - list.Min
+	if list.Children[i] == nil {
 		// This is not supposed to be reached.
 		panic("removing non-existent child")
 	}
-	list.children[i] = nil
+	list.Children[i] = nil
 }
 
-func (list *denseChildList) next(b byte) *Trie {
+func (list *DenseChildList) next(b byte) *Trie {
 	i := int(b)
-	if i < list.min || list.max < i {
+	if i < list.Min || list.Max < i {
 		return nil
 	}
-	return list.children[i-list.min]
+	return list.Children[i-list.Min]
 }
 
-func (list *denseChildList) walk(prefix *Prefix, visitor VisitorFunc) error {
-	for _, child := range list.children {
+func (list *DenseChildList) walk(prefix *Prefix, visitor VisitorFunc) error {
+	for _, child := range list.Children {
 		if child == nil {
 			continue
 		}
-		*prefix = append(*prefix, child.prefix...)
-		if child.item != nil {
-			if err := visitor(*prefix, child.item); err != nil {
+		*prefix = append(*prefix, child.InternalPrefix...)
+		if child.InternalItem != nil {
+			if err := visitor(*prefix, child.InternalItem); err != nil {
 				if err == SkipSubtree {
-					*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+					*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 					continue
 				}
-				*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+				*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 				return err
 			}
 		}
 
-		err := child.children.walk(prefix, visitor)
-		*prefix = (*prefix)[:len(*prefix)-len(child.prefix)]
+		err := child.InternalChildren.walk(prefix, visitor)
+		*prefix = (*prefix)[:len(*prefix)-len(child.InternalPrefix)]
 		if err != nil {
 			return err
 		}
