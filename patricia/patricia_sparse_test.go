@@ -564,7 +564,7 @@ func TestTrie_compact(t *testing.T) {
 
 func TestTrie_longestCommonPrefixLenght(t *testing.T) {
 	trie := NewTrie()
-	trie.prefix = []byte("1234567890")
+	trie.InternalPrefix = []byte("1234567890")
 
 	switch {
 	case trie.longestCommonPrefixLength([]byte("")) != 0:

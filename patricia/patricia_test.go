@@ -6,7 +6,10 @@
 package patricia
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/gob"
+	"log"
 	"reflect"
 	"testing"
 )
@@ -74,5 +77,29 @@ func TestTrie_RandomKitchenSink(t *testing.T) {
 	}
 	for k, v := range m {
 		getAndDelete(k, v)
+	}
+}
+
+func TestTrieSerializes(t *testing.T) {
+	gob.Register(&SparseChildList{})
+	gob.Register(&DenseChildList{})
+	trie := NewTrie()
+	trie.Insert([]byte("hello1"), "world1")
+	trie.Insert([]byte("hello2"), "world2")
+	var bytesBuffer bytes.Buffer
+	encoder := gob.NewEncoder(&bytesBuffer)
+	if err := encoder.Encode(trie); err != nil {
+		t.Fatalf("Serialization failed:", err)
+	}
+	encodedReader := bytes.NewReader(bytesBuffer.Bytes())
+	decoder := gob.NewDecoder(encodedReader)
+	trie2 := NewTrie()
+	decoder.Decode(&trie2)
+	log.Println(trie2)
+	if value := trie2.Get([]byte("hello1")); value == nil {
+		t.Fatalf("hello1 not serialized")
+	}
+	if value := trie2.Get([]byte("hello2")); value == nil {
+		t.Fatalf("hello1 not serialized")
 	}
 }
